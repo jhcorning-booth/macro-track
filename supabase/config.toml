@@ -24,14 +24,19 @@ otp_expiry = 3600
 
 # Custom SMTP. Required, not optional: on the free tier with the built-in
 # mailer Supabase refuses template edits, so the email can only ever contain a
-# magic link — and the app asks for a typed code. The key is read from
-# .env.local and never committed.
+# magic link — and the app asks for a typed code.
+#
+# Gmail rather than a domain-backed provider: this needs to deliver to anyone
+# who signs up, and Resend's shared sender only reaches the account owner.
+# Gmail sends to any address with no domain to verify. ~500 recipients/day,
+# far above what sign-in codes will ever use. Credentials come from .env.local
+# and are never committed.
 [auth.email.smtp]
 enabled = true
-host = "smtp.resend.com"
+host = "smtp.gmail.com"
 port = 465
-user = "resend"
-pass = "env(RESEND_API_KEY)"
+user = "env(MAIL_FROM)"
+pass = "env(GMAIL_APP_PASSWORD)"
 sender_name = "MacroTrack"
 admin_email = "env(MAIL_FROM)"
 

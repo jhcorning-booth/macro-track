@@ -33,6 +33,7 @@ import {
 } from "@/lib/dates";
 import { sumEntries } from "@/lib/calc";
 import { clearPushSubscription } from "@/lib/push";
+import { attachPhotoUrls } from "@/lib/photos";
 
 export type Screen = "today" | "add" | "history" | "trends" | "settings" | "weight";
 
@@ -122,6 +123,8 @@ interface AppValue extends Omit<Bootstrap, "today" | "floor" | "trial"> {
   moveEntry: (entry: FoodEntry, days: -1 | 1) => Promise<void>;
   saveWeight: (value: number) => Promise<boolean>;
   saveTargets: (t: Targets) => Promise<void>;
+  /** Moves the date boundary itself, so it may change what "today" is. */
+  setTimezone: (tz: string) => Promise<boolean>;
   toggleNudge: (kind: NudgeKind) => Promise<void>;
   setNudgeTime: (kind: NudgeKind, sendAt: string) => Promise<void>;
   searchFoods: (q: string) => Promise<FoodEntry[]>;
@@ -248,7 +251,7 @@ export function AppProvider({
    *  that date (which may differ from yesterday's). */
   const loadDay = useCallback(
     async (date: string) => {
-      const [{ data: rows }, { data: t }] = await Promise.all([
+      const [entriesRes, targetRes] = await Promise.all([
         supabase
           .from("food_entries")
           .select("*")
@@ -263,10 +266,25 @@ export function AppProvider({
           .limit(1)
           .maybeSingle(),
       ]);
-      setEntries((rows ?? []) as FoodEntry[]);
-      if (t) setTargets(t as Targets);
+
+      // A failed read must not be mistaken for an empty day. Blanking the log
+      // and the gauge on a dropped connection would look like data loss.
+      if (entriesRes.error) {
+        setLastError("Couldn't load that day — pull to refresh.");
+        return;
+      }
+
+      // photo_url is synthesised, not selected, so it has to be re-attached or
+      // every thumbnail in the list goes blank.
+      const rows = await attachPhotoUrls(supabase, (entriesRes.data ?? []) as FoodEntry[]);
+      setEntries(rows);
+
+      // No target version covers this date only if the account predates its
+      // own first target; keeping the previous day's would silently score the
+      // day against the wrong number, so fall back to the bootstrap value.
+      setTargets((targetRes.data as Targets | null) ?? initial.targets);
     },
-    [supabase],
+    [supabase, initial.targets],
   );
 
   /* -------------------------------------------------- midnight rollover
@@ -274,9 +292,13 @@ export function AppProvider({
      PWA that can sit open across that boundary, so the date cannot be frozen
      at bootstrap — otherwise a 12:15 AM snack files onto yesterday. */
 
-  useEffect(() => {
-    const check = () => {
-      const now = localDate(profile.timezone);
+  /** Re-derives the live date in `tz` and swaps the whole day over when it has
+   *  moved. Two things move it: the clock crossing midnight, and the user
+   *  changing the zone underneath it — both need the same work, so the zone is
+   *  a parameter rather than read from state that may not have committed yet. */
+  const syncDate = useCallback(
+    (tz: string) => {
+      const now = localDate(tz);
       if (now === todayRef.current) return;
       todayRef.current = now;
       setToday(now);
@@ -284,7 +306,12 @@ export function AppProvider({
       setCelebrate(false);
       void loadDay(now);
       void refreshLogs();
-    };
+    },
+    [loadDay, refreshLogs],
+  );
+
+  useEffect(() => {
+    const check = () => syncDate(profile.timezone);
 
     const id = setInterval(check, DAY_CHECK_MS);
     document.addEventListener("visibilitychange", check);
@@ -294,7 +321,7 @@ export function AppProvider({
       document.removeEventListener("visibilitychange", check);
       window.removeEventListener("focus", check);
     };
-  }, [profile.timezone, loadDay, refreshLogs]);
+  }, [profile.timezone, syncDate]);
 
   /* ---------------------------------------------------------- celebrate */
 
@@ -795,6 +822,41 @@ export function AppProvider({
     [supabase, profile.onboarded_at, userId, refreshLogs],
   );
 
+  /* -------------------------------------------------------- preferences */
+
+  const setTimezone = useCallback(
+    async (tz: string): Promise<boolean> => {
+      if (tz === profile.timezone) return true;
+
+      // .select() matters: PostgREST answers a PATCH that matched zero rows
+      // with 204 and no error, so without reading the row back the UI would
+      // happily show a zone that was never saved.
+      const { data, error } = await supabase
+        .from("profiles")
+        .update({ timezone: tz })
+        .eq("id", userId)
+        .select("timezone")
+        .maybeSingle();
+
+      if (error || !data) {
+        setLastError(error?.message ?? "Could not save that time zone.");
+        return false;
+      }
+
+      const saved = (data as { timezone: string }).timezone;
+      setProfile((p) => ({ ...p, timezone: saved }));
+      // Entries already written keep the local_date they were filed under.
+      // That is deliberate: the day a meal was eaten does not change because
+      // the phone moved.
+      syncDate(saved);
+      // The server bootstrap still holds the old timezone; refresh so a
+      // client-side navigation cannot resurrect the stale date.
+      router.refresh();
+      return true;
+    },
+    [profile.timezone, supabase, userId, syncDate, router],
+  );
+
   /* ------------------------------------------------------------- nudges */
 
   const upsertNudge = useCallback(
@@ -921,6 +983,7 @@ export function AppProvider({
     moveEntry,
     saveWeight,
     saveTargets,
+    setTimezone,
     toggleNudge,
     setNudgeTime,
     searchFoods,

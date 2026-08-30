@@ -5,7 +5,8 @@ export function fmt(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
-/** 3.5 -> "3.5 g", 42 -> "42 g" */
+/** 3.5 -> "3.5 g", 42 -> "42 g". Kept for the spaced form the hero macro rows
+ *  use; the entry list deliberately does not (see macroLine). */
 export function g(n: number): string {
   return `${trim(n)} g`;
 }
@@ -26,8 +27,13 @@ export function signed(n: number, digits = 1): string {
   return `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(digits)}`;
 }
 
+/** "42g P · 9g C · 3.5g F" — the unit rides tight against its number here.
+ *  The handoff writes it spaced ("42 g P"), but at 11px JetBrains Mono every
+ *  space costs a full character width, and three of them per line made the row
+ *  read as gappy against the name above it. The spaced form is kept where it
+ *  has room to breathe: the hero's macro rows. */
 export function macroLine(p: number, c: number, f: number): string {
-  return `${g(p)} P · ${g(c)} C · ${g(f)} F`;
+  return `${trim(p)}g P · ${trim(c)}g C · ${trim(f)}g F`;
 }
 
 /** "230 kcal · 42P 9C 3.5F" — the compact form used on quick-add and toasts. */

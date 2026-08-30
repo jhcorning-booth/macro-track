@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -12,10 +13,11 @@ import { ScreenTitle, SectionTitle, StepperRow, Toggle } from "@/components/ui";
 import { ensurePushSubscription, pushSupported } from "@/lib/push";
 import { fmt, trim } from "@/lib/format";
 
-/** Permission is read once per render, not subscribed to — the browser has no
- *  change event for it, and `allow` reports the new value directly. */
+/** Read once per render, not subscribed to — the browser has no change event
+ *  for permission or for its own zone, and `allow` reports the new value
+ *  directly. */
 const NO_SUBSCRIBE = () => () => {};
-import { RETENTION_DAYS } from "@/lib/dates";
+import { browserTimeZone, RETENTION_DAYS } from "@/lib/dates";
 import type { NudgeKind, Targets } from "@/lib/types";
 
 /* --------------------------------------------------------------- constants */
@@ -62,6 +64,37 @@ const TARGET_FALLBACK: Targets = {
 
 const SAVE_DEBOUNCE_MS = 500;
 
+/** Only for browsers without `Intl.supportedValuesOf` (older WebKit). Not a
+ *  world tour — enough to pick from, with the saved and detected zones merged
+ *  in on top so the control is never blank. */
+const FALLBACK_ZONES = [
+  "America/Anchorage",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Mexico_City",
+  "America/New_York",
+  "America/Phoenix",
+  "America/Sao_Paulo",
+  "America/Toronto",
+  "Asia/Dubai",
+  "Asia/Hong_Kong",
+  "Asia/Kolkata",
+  "Asia/Seoul",
+  "Asia/Shanghai",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Australia/Sydney",
+  "Europe/Berlin",
+  "Europe/Dublin",
+  "Europe/London",
+  "Europe/Madrid",
+  "Europe/Paris",
+  "Pacific/Auckland",
+  "Pacific/Honolulu",
+  "UTC",
+];
+
 const ROW =
   "rounded-[18px] border border-line bg-raised px-4 py-3.5 text-[13.5px]";
 const NOTE = "mt-1 text-[11.5px] leading-[1.45] text-[oklch(0.56_0.02_70)]";
@@ -89,6 +122,20 @@ function normalizeTargets(t: Targets): Targets {
     carbs_target_g: num(t.carbs_target_g, TARGET_FALLBACK.carbs_target_g),
     fat_target_g: num(t.fat_target_g, TARGET_FALLBACK.fat_target_g),
   };
+}
+
+/** Enumerated once per session: the list is static, and useSyncExternalStore
+ *  needs the same array back every read or it re-renders forever. */
+let zoneCache: string[] | null = null;
+
+function supportedZones(): string[] {
+  if (!zoneCache) {
+    zoneCache =
+      typeof Intl.supportedValuesOf === "function"
+        ? Intl.supportedValuesOf("timeZone")
+        : FALLBACK_ZONES;
+  }
+  return zoneCache;
 }
 
 /** Postgres `time` comes back as "10:00:00"; <input type="time"> wants "10:00". */
@@ -180,6 +227,7 @@ export default function SettingsScreen() {
     nudges,
     toggleNudge,
     setNudgeTime,
+    setTimezone,
     setOnboard,
     signOut,
     trial,
@@ -233,6 +281,51 @@ export default function SettingsScreen() {
       timer.current = setTimeout(flush, SAVE_DEBOUNCE_MS);
     },
     [flush],
+  );
+
+  /* ----------------------------------------------------------- time zone */
+
+  // The server's zone list and its host zone are not the browser's, so both are
+  // read through useSyncExternalStore with a server snapshot the server can
+  // actually stand behind — otherwise hydration mismatches on the options.
+  const zones = useSyncExternalStore(
+    NO_SUBSCRIBE,
+    supportedZones,
+    () => FALLBACK_ZONES,
+  );
+  const deviceZone = useSyncExternalStore(
+    NO_SUBSCRIBE,
+    browserTimeZone,
+    () => profile.timezone,
+  );
+
+  const [pendingZone, setPendingZone] = useState<string | null>(null);
+  const zone = pendingZone ?? profile.timezone;
+
+  const zoneOptions = useMemo(() => {
+    // The saved zone and this device's must always be selectable even if the
+    // list somehow omits them — a blank control can't be recovered from.
+    const all = new Set(zones);
+    all.add(profile.timezone);
+    all.add(deviceZone);
+    return [...all].sort();
+  }, [zones, profile.timezone, deviceZone]);
+
+  /** The pending value holds the row on the new zone while the write is in
+   *  flight, then clears either way — a failure must show what is saved. */
+  const pickZone = useCallback(
+    async (tz: string) => {
+      if (tz === profile.timezone) return;
+      setPendingZone(tz);
+      try {
+        await setTimezone(tz);
+      } finally {
+        // Without the finally, a throw would leave the select disabled with no
+        // way back except a reload.
+        setPendingZone(null);
+      }
+    },
+    [profile.timezone, setTimezone],
   );
 
   /* ---------------------------------------------------------------- push */
@@ -434,7 +527,57 @@ export default function SettingsScreen() {
       <SectionTitle className="mx-0.5 mt-[22px] mb-2.5">Preferences</SectionTitle>
 
       <div className="flex flex-col gap-2.5">
-        <PrefRow label="Time zone" value={profile.timezone} />
+        <div className={ROW}>
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="timezone" className="flex-none font-bold">
+              Time zone
+            </label>
+            {/* The caret is a sibling: a <select> may only contain options. */}
+            <span className="flex min-w-0 items-center gap-1.5">
+              <select
+                id="timezone"
+                value={zone}
+                disabled={pendingZone !== null}
+                onChange={(e) => void pickZone(e.target.value)}
+                className="tnum min-w-0 truncate appearance-none border-0 bg-transparent p-0 text-right font-mono text-[13.5px] text-muted outline-none disabled:text-disabled"
+              >
+                {zoneOptions.map((z) => (
+                  <option key={z} value={z}>
+                    {z}
+                  </option>
+                ))}
+              </select>
+              <svg
+                viewBox="0 0 10 6"
+                aria-hidden="true"
+                className="h-[6px] w-[10px] flex-none text-faint"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.6}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M1 1l4 4 4-4" />
+              </svg>
+            </span>
+          </div>
+          <div className={NOTE}>
+            Days are cut at midnight in this zone. Meals already logged keep the
+            day they were filed under.
+          </div>
+          {deviceZone !== zone && (
+            <button
+              type="button"
+              onClick={() => void pickZone(deviceZone)}
+              disabled={pendingZone !== null}
+              className="mt-2 block text-left text-[13.5px] font-bold text-accent disabled:text-disabled"
+            >
+              Use this device&rsquo;s zone ·{" "}
+              <span className="font-mono">{deviceZone}</span>
+            </button>
+          )}
+        </div>
+
         <PrefRow label="Units" value={`${profile.weight_unit} · kcal`} />
 
         <div className={ROW}>

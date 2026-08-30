@@ -9,6 +9,7 @@ import type {
   Profile,
   SavedFood,
   Targets,
+  TrialStatus,
   WeightEntry,
 } from "@/lib/types";
 
@@ -24,6 +25,7 @@ export interface Bootstrap {
   weights: WeightEntry[];
   savedFoods: SavedFood[];
   nudges: NudgePref[];
+  trial: TrialStatus;
 }
 
 const DEFAULT_TARGETS: Targets = {
@@ -58,7 +60,7 @@ export async function loadBootstrap(): Promise<Bootstrap | null> {
   const today = localDate(profile.timezone);
   const floor = retentionFloor(today);
 
-  const [targetsRes, entriesRes, logsRes, weightsRes, savedRes, nudgesRes] =
+  const [targetsRes, entriesRes, logsRes, weightsRes, savedRes, nudgesRes, trialRes] =
     await Promise.all([
       supabase
         .from("nutrition_targets")
@@ -89,6 +91,7 @@ export async function loadBootstrap(): Promise<Bootstrap | null> {
         .order("last_used", { ascending: false })
         .limit(8),
       supabase.from("notification_prefs").select("kind, enabled, send_at"),
+      supabase.rpc("trial_status"),
     ]);
 
   const entries = await attachPhotos(supabase, (entriesRes.data ?? []) as FoodEntry[]);
@@ -103,6 +106,16 @@ export async function loadBootstrap(): Promise<Bootstrap | null> {
     weights: (weightsRes.data ?? []) as WeightEntry[],
     savedFoods: (savedRes.data ?? []) as SavedFood[],
     nudges: (nudgesRes.data ?? []) as NudgePref[],
+    // A failed lookup must not hand out free analyses; assume blocked and let
+    // the wall explain, rather than silently uncapping the key.
+    trial: (trialRes.data as TrialStatus | null) ?? {
+      plan: "trial",
+      unlimited: false,
+      blocked: true,
+      reason: "expired",
+      analyses_used: 0,
+      contact_email: "jhcorning12@gmail.com",
+    },
   };
 }
 

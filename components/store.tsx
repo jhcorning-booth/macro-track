@@ -20,6 +20,7 @@ import type {
   NudgePref,
   SavedFood,
   Targets,
+  TrialStatus,
   WeightEntry,
 } from "@/lib/types";
 import { compactLine, fmt } from "@/lib/format";
@@ -69,7 +70,14 @@ export interface EditTarget {
 const TOAST_MS = 5200;
 const DAY_CHECK_MS = 60_000;
 
-interface AppValue extends Omit<Bootstrap, "today" | "floor"> {
+interface AppValue extends Omit<Bootstrap, "today" | "floor" | "trial"> {
+  trial: TrialStatus;
+  /** Shown when an analysis is refused. Dismissible — the rest of the app
+   *  (quick-add, editing, weight, history) keeps working without the model. */
+  wall: TrialStatus | null;
+  dismissWall: () => void;
+  refreshTrial: () => Promise<void>;
+
   /** The live local date. Recomputed as the clock crosses midnight in the
    *  user's timezone — an installed PWA can sit open across the boundary. */
   today: string;
@@ -152,6 +160,8 @@ export function AppProvider({
   const [weights, setWeights] = useState(initial.weights);
   const [savedFoods, setSavedFoods] = useState(initial.savedFoods);
   const [nudges, setNudges] = useState(initial.nudges);
+  const [trial, setTrial] = useState(initial.trial);
+  const [wall, setWall] = useState<TrialStatus | null>(null);
 
   const [screen, setScreenRaw] = useState<Screen>("today");
   const [onboard, setOnboard] = useState(!initial.profile.onboarded_at);
@@ -218,6 +228,11 @@ export function AppProvider({
     ]);
     if (logs) setDailyLogs(logs as DailyLog[]);
     if (w) setWeights(w as WeightEntry[]);
+  }, [supabase]);
+
+  const refreshTrial = useCallback(async () => {
+    const { data } = await supabase.rpc("trial_status");
+    if (data) setTrial(data as TrialStatus);
   }, [supabase]);
 
   const refreshSaved = useCallback(async () => {
@@ -477,6 +492,13 @@ export function AppProvider({
               maybeCelebrate(before, before + delta);
               void refreshLogs();
               void refreshSaved();
+              void refreshTrial();
+            } else if (evt.type === "blocked") {
+              setProcessing({ active: false, stage: null, preview: null });
+              const status = evt.status as TrialStatus;
+              setTrial(status);
+              setWall(status);
+              dismissToast();
             } else if (evt.type === "error") {
               setProcessing({ active: false, stage: null, preview: null });
               const ids: string[] = evt.evidenceIds?.length ? evt.evidenceIds : evidenceIds;
@@ -508,7 +530,17 @@ export function AppProvider({
         if (preview) URL.revokeObjectURL(preview);
       }
     },
-    [todayTotals.cal, setScreen, absorb, showToast, maybeCelebrate, refreshLogs, refreshSaved],
+    [
+      todayTotals.cal,
+      setScreen,
+      absorb,
+      showToast,
+      dismissToast,
+      maybeCelebrate,
+      refreshLogs,
+      refreshSaved,
+      refreshTrial,
+    ],
   );
 
   const analyze = useCallback(
@@ -859,6 +891,10 @@ export function AppProvider({
     weights,
     savedFoods,
     nudges,
+    trial,
+    wall,
+    dismissWall: () => setWall(null),
+    refreshTrial,
 
     screen,
     setScreen,

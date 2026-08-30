@@ -334,3 +334,93 @@ export function Celebration() {
     </div>
   );
 }
+
+/* -------------------------------------------------------- trial wall --- */
+
+/** Shown when an analysis is refused. Deliberately not a hard lock: quick-add,
+ *  editing, weight, history and trends all still work, because the only thing
+ *  the trial meters is the model call. */
+export function TrialWall() {
+  const { wall, dismissWall } = useApp();
+  if (!wall) return null;
+
+  const expired = wall.reason === "expired";
+  const email = wall.contact_email;
+
+  return (
+    <div
+      className="absolute inset-0 z-[11] flex animate-pop-fast flex-col items-center justify-center gap-4 p-9 text-center"
+      style={{ background: "oklch(0.99 0.01 85 / .97)" }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Trial ended"
+    >
+      <div className="flex h-[84px] w-[84px] items-center justify-center rounded-full bg-accent-wash">
+        <span className="tnum font-mono text-[26px] font-bold text-accent">
+          {expired ? `${wall.trial_days ?? 14}d` : wall.analyses_used}
+        </span>
+      </div>
+
+      <h2 className="text-[24px] font-extrabold tracking-[-0.02em] text-balance">
+        {expired ? "Your trial's up" : "That's the last free analysis"}
+      </h2>
+
+      <p className="max-w-[30ch] text-[14px] leading-[1.5] text-muted text-balance">
+        {expired
+          ? `The free trial runs ${wall.trial_days ?? 14} days. Yours has run out — everything you logged is still here.`
+          : `The free trial covers ${wall.analyses_limit ?? 150} photo analyses and you've used them all. Everything you logged is still here.`}
+      </p>
+
+      <a
+        href={`mailto:${email}?subject=${encodeURIComponent("MacroTrack — upgrade to a paid account")}`}
+        className="mt-1 rounded-[18px] bg-accent px-6 py-3.5 text-[14px] font-bold text-surface"
+      >
+        Email to keep going
+      </a>
+      <p className="font-mono text-[11px] text-faint">{email}</p>
+
+      <div className="mt-3 max-w-[32ch] rounded-[18px] border border-line bg-raised px-4 py-3 text-[12.5px] leading-[1.5] text-muted text-balance">
+        Photo logging is what pauses. Your history, weight, trends and one-tap
+        re-adds all still work.
+      </div>
+
+      <button
+        type="button"
+        onClick={dismissWall}
+        className="mt-1 px-4 py-2 text-[13px] font-semibold text-faint"
+      >
+        Back to my log
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- trial notice -- */
+
+/** A quiet line on Today while the trial is still running. Only appears once
+ *  it is worth knowing about — nagging from day one would be noise. */
+export function TrialNotice() {
+  const { trial, setScreen } = useApp();
+  if (trial.unlimited || trial.blocked) return null;
+
+  const days = trial.days_left ?? 0;
+  const left = trial.analyses_left ?? 0;
+  const worthSaying = days <= 5 || left <= 25;
+  if (!worthSaying) return null;
+
+  const line =
+    days <= 5 && days <= Math.ceil(left / 5)
+      ? `${days} day${days === 1 ? "" : "s"} left in your trial`
+      : `${left} photo analys${left === 1 ? "is" : "es"} left in your trial`;
+
+  return (
+    <button
+      type="button"
+      onClick={() => setScreen("settings")}
+      className="mb-3 flex w-full items-center justify-between rounded-[16px] border border-accent-wash-line bg-accent-wash px-4 py-2.5 text-left"
+    >
+      <span className="text-[12.5px] font-semibold text-accent-quiet">{line}</span>
+      <span className="font-mono text-[11px] text-accent">details</span>
+    </button>
+  );
+}

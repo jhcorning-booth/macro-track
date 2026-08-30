@@ -5,7 +5,13 @@ import { analyzeFood } from "@/lib/analyze";
 import { lookupBarcode, lookupUsda, type SourceHit } from "@/lib/nutrition-sources";
 import { round1 } from "@/lib/calc";
 import { isIsoDate } from "@/lib/dates";
-import type { AnalyzeEvent, AnalyzedItem, FoodEntry, SavedFood } from "@/lib/types";
+import type {
+  AnalyzeEvent,
+  AnalyzedItem,
+  FoodEntry,
+  SavedFood,
+  TrialStatus,
+} from "@/lib/types";
 
 export const runtime = "nodejs";
 // Measured worst case is ~10s. 60 is the ceiling on Vercel's Hobby plan and
@@ -48,6 +54,23 @@ export async function POST(req: NextRequest) {
       let evidenceIds: string[] = [];
 
       try {
+        // Authorise BEFORE uploading anything: a blocked account gets a wall,
+        // not a stored photo it can never have analysed. The database checks
+        // and records atomically, so this cannot be raced or replayed.
+        const { data: credit, error: creditError } = await supabase.rpc(
+          "consume_ai_credit",
+          { p_images: Math.max(1, uploads.length) },
+        );
+
+        if (creditError) {
+          throw new Error(creditError.message);
+        }
+        const status = credit as unknown as TrialStatus & { allowed: boolean };
+        if (!status?.allowed) {
+          send({ type: "blocked", status });
+          return;
+        }
+
         send({ type: "stage", stage: "reading_label" });
 
         /* ---------------------------------------- 1. preserve evidence */

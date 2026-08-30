@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "@/components/store";
 import { ConfidencePill, SectionTitle, Thumb } from "@/components/ui";
+import { TrialNotice } from "@/components/overlays";
 import { heroState, macroRows } from "@/lib/calc";
 import { compactLine, fmt, macroLine, timeLabel } from "@/lib/format";
 import { headerDate } from "@/lib/dates";
@@ -103,6 +104,8 @@ export default function TodayScreen() {
           </span>
         </button>
       </div>
+
+      <TrialNotice />
 
       {/* --------------------------------------------- hero · fill gauge */}
       <div className="flex items-stretch gap-5 rounded-[28px] border border-[oklch(0.91_0.012_80)] bg-sunken p-5">

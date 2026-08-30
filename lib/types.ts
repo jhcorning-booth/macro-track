@@ -152,6 +152,22 @@ export interface AnalyzedItem {
   matched_saved_food_id?: string | null;
 }
 
+/** Where an account stands against its trial. The database is the authority
+ *  (public.trial_status); this is only the shape it returns. */
+export interface TrialStatus {
+  plan: "trial" | "paid" | "owner";
+  unlimited: boolean;
+  blocked: boolean;
+  reason?: "expired" | "quota" | null;
+  days_left?: number;
+  trial_days?: number;
+  analyses_used: number;
+  analyses_limit?: number;
+  analyses_left?: number;
+  expires_at?: string;
+  contact_email: string;
+}
+
 /** Server-sent events emitted by /api/analyze so the overlay tracks real work. */
 export type AnalyzeStage =
   | "reading_label"
@@ -165,4 +181,6 @@ export type AnalyzeEvent =
   | { type: "evidence"; evidenceIds: string[] }
   | { type: "stage"; stage: AnalyzeStage }
   | { type: "logged"; entries: FoodEntry[]; celebrate: boolean }
-  | { type: "error"; message: string; evidenceIds: string[] };
+  | { type: "error"; message: string; evidenceIds: string[] }
+  /** Trial exhausted — the UI shows the upgrade wall, not an error toast. */
+  | { type: "blocked"; status: TrialStatus };

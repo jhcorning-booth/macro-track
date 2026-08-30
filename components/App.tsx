@@ -8,6 +8,7 @@ import {
   EditSheet,
   ProcessingOverlay,
   ToastBar,
+  TrialWall,
 } from "@/components/overlays";
 import TodayScreen from "@/components/screens/TodayScreen";
 import AddScreen from "@/components/screens/AddScreen";
@@ -53,6 +54,7 @@ function Shell() {
           <ToastBar />
           <EditSheet />
           <Celebration />
+          <TrialWall />
 
           {lastError && (
             <button

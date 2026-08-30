@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the template documenting which variables exist must be published,
+# or a fresh clone has no record of the contract. It holds placeholders only.
+!.env.example
 
 # vercel
 .vercel

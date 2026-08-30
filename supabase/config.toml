@@ -22,6 +22,31 @@ max_frequency = "60s"
 otp_length = 6
 otp_expiry = 3600
 
+# Custom SMTP. Required, not optional: on the free tier with the built-in
+# mailer Supabase refuses template edits, so the email can only ever contain a
+# magic link — and the app asks for a typed code. The key is read from
+# .env.local and never committed.
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(RESEND_API_KEY)"
+sender_name = "MacroTrack"
+admin_email = "env(MAIL_FROM)"
+
+# Supabase's stock templates render {{ .ConfirmationURL }} — a magic link —
+# and never {{ .Token }}. The app asks for a typed code (a link cannot hand a
+# session back to an installed PWA reliably), so the email has to actually
+# contain one. Both the existing-user and new-user paths use the same template.
+[auth.email.template.magic_link]
+subject = "Your MacroTrack sign-in code"
+content_path = "./supabase/templates/otp.html"
+
+[auth.email.template.confirmation]
+subject = "Your MacroTrack sign-in code"
+content_path = "./supabase/templates/otp.html"
+
 # Both functions are invoked by pg_cron over pg_net, which cannot present a
 # user JWT — they authenticate with the x-cron-secret header instead. Without
 # this, a redeploy would silently re-enable JWT verification and every

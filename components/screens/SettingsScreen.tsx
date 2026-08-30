@@ -393,28 +393,24 @@ export default function SettingsScreen() {
       <SectionTitle className="mx-0.5 mt-[22px] mb-2.5">Plan</SectionTitle>
 
       {trial.unlimited ? (
-        <div className={ROW}>
-          <span className="font-bold">
-            {trial.plan === "owner" ? "Owner" : "Paid"}
-          </span>
-          <span className="font-mono text-muted">unlimited</span>
-        </div>
+        <PrefRow
+          label={trial.plan === "owner" ? "Owner" : "Paid"}
+          value="unlimited"
+        />
       ) : (
         <div className="flex flex-col gap-2.5">
-          <div className={ROW}>
-            <span className="font-bold">Free trial</span>
-            <span className="tnum font-mono text-muted">
-              {trial.blocked
+          <PrefRow
+            label="Free trial"
+            value={
+              trial.blocked
                 ? "ended"
-                : `${trial.days_left ?? 0} day${(trial.days_left ?? 0) === 1 ? "" : "s"} left`}
-            </span>
-          </div>
-          <div className={ROW}>
-            <span className="font-bold">Photo analyses</span>
-            <span className="tnum font-mono text-muted">
-              {trial.analyses_used} / {trial.analyses_limit ?? 0}
-            </span>
-          </div>
+                : `${trial.days_left ?? 0} day${(trial.days_left ?? 0) === 1 ? "" : "s"} left`
+            }
+          />
+          <PrefRow
+            label="Photo analyses"
+            value={`${trial.analyses_used} / ${trial.analyses_limit ?? 0}`}
+          />
           <div className="rounded-[18px] border border-dashed border-line-dashed px-4 py-3.5">
             <div className="text-[13.5px] font-bold">
               {trial.blocked ? "Trial ended" : "After the trial"}

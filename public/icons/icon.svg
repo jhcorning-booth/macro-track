@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#d1703f"/>
+  <defs>
+    <clipPath id="tank">
+      <rect x="144.17919999999998" y="88.2688" width="223.6416" height="335.4624" rx="67.09248"/>
+    </clipPath>
+  </defs>
+  <rect x="144.17919999999998" y="88.2688" width="223.6416" height="335.4624" rx="67.09248"
+        fill="none" stroke="#faf7f3" stroke-width="23.04"/>
+  <g clip-path="url(#tank)">
+    <rect x="144.17919999999998" y="209.03526399999998" width="223.6416" height="335.4624" fill="#faf7f3"/>
+  </g>
+</svg>

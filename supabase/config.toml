@@ -1,0 +1,33 @@
+project_id = "macrotrack"
+
+# The sign-in email's link should point at the deployed app, not localhost.
+# The app verifies a typed code rather than following the link, so this is
+# cosmetic for sign-in — but it is also what Supabase uses as the default
+# redirect, and a wrong value here is confusing to land on.
+[auth]
+site_url = "https://macrotrack-brown.vercel.app"
+additional_redirect_urls = [
+  "https://macrotrack-brown.vercel.app",
+  "http://localhost:3000",
+]
+
+# `config push` sends every default, not just the keys written here, so the
+# values that matter are pinned explicitly rather than left to the CLI.
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+# One sign-in email per minute. The CLI default of 1s removes the guard that
+# stops a stranger burning the mailer quota on the deployed URL.
+max_frequency = "60s"
+otp_length = 6
+otp_expiry = 3600
+
+# Both functions are invoked by pg_cron over pg_net, which cannot present a
+# user JWT — they authenticate with the x-cron-secret header instead. Without
+# this, a redeploy would silently re-enable JWT verification and every
+# scheduled run would 401 with nothing in the UI to show for it.
+[functions.send-nudges]
+verify_jwt = false
+
+[functions.purge-retention]
+verify_jwt = false

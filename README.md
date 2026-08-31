@@ -217,7 +217,7 @@ On iPhone, Web Push only works once the app is **added to the Home Screen**.
 
 ## Deploying
 
-The web app needs only four variables, and exactly one of them is a secret:
+The web app needs only five variables, and exactly one of them is a secret:
 
 | Variable | Why |
 |---|---|
@@ -225,6 +225,20 @@ The web app needs only four variables, and exactly one of them is a secret:
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | public; RLS is what protects the data |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | public by design |
 | `ANTHROPIC_API_KEY` | **secret** — server-side only |
+| `CONTACT_EMAIL` | not secret, but personal — see below |
+
+`CONTACT_EMAIL` is where the trial wall tells blocked users to write. It is
+configuration rather than code precisely because this repo is public: a
+hardcoded address is a hardcoded address for every fork, and code search
+indexes it. Set it here *and* in the database, which is what the app actually
+reads:
+
+```sql
+update public.app_settings set contact_email = 'you@example.com';
+```
+
+Leaving both unset is fine — the wall simply drops the contact line rather than
+pointing users at someone else's inbox.
 
 Auth email (`MAIL_FROM`, `GMAIL_APP_PASSWORD`) is read by `supabase config
 push`, not by the web app — it configures Supabase's SMTP, so it never needs to

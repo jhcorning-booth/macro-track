@@ -13,6 +13,7 @@ import type {
 } from "./types";
 import { addDays, daysBetween } from "./dates";
 import { fmt, signed, trim } from "./format";
+import { weightIn, weightToKg, type WeightUnit } from "./units";
 
 export const EMPTY_TOTALS: Totals = { cal: 0, p: 0, c: 0, f: 0 };
 
@@ -143,6 +144,20 @@ export interface WindowStats {
   weightChange: number | null;
 }
 
+/** A weight recorded in one unit, read in another. Every stored row carries
+ *  the unit it was logged under, so a change of preference has to CONVERT the
+ *  number — relabelling 140 lb as "140 kg" would invent a 2.2x error in the
+ *  one figure this app exists to track. Rounded to one decimal, which is the
+ *  resolution of a bathroom scale.
+ *
+ *  Every function below takes the display unit last and defaults it to pounds:
+ *  that is what every row used before the preference existed, so the default
+ *  reproduces the old behaviour exactly and callers opt in by passing
+ *  `profile.weight_unit`. */
+export function weightAs(value: number, from: WeightUnit, to: WeightUnit): number {
+  return round1(weightIn(weightToKg(Number(value), from), to));
+}
+
 /** `logs` may be sparse; the window is the last `days` calendar days ending
  *  on `today`. Averages are over days that actually have a food log, so a
  *  missed day doesn't read as a 0-calorie day. */
@@ -151,6 +166,7 @@ export function windowStats(
   weights: WeightEntry[],
   today: string,
   days: number,
+  unit: WeightUnit = "lb",
 ): WindowStats {
   const from = addDays(today, -(days - 1));
   const inWindow = logs.filter(
@@ -184,7 +200,7 @@ export function windowStats(
     // an unlogged day is not a day at target.
     adherencePct: days > 0 ? (atTarget / days) * 100 : 0,
     avgTarget: logged.length ? sum.t / n : 0,
-    weightChange: weightDelta(weights, today, days),
+    weightChange: weightDelta(weights, today, days, unit),
   };
 }
 
@@ -194,8 +210,9 @@ export function weightDelta(
   weights: WeightEntry[],
   today: string,
   days: number,
+  unit: WeightUnit = "lb",
 ): number | null {
-  const series = rollingWeight(weights, 7);
+  const series = rollingWeight(weights, 7, unit);
   if (series.length < 2) return null;
   const from = addDays(today, -(days - 1));
   const inWindow = series.filter(
@@ -212,15 +229,25 @@ export interface RollingPoint {
 }
 
 /** Trailing moving average over the last `n` recorded weights. */
-export function rollingWeight(weights: WeightEntry[], n = 7): RollingPoint[] {
+export function rollingWeight(
+  weights: WeightEntry[],
+  n = 7,
+  unit: WeightUnit = "lb",
+): RollingPoint[] {
   const sorted = [...weights].sort((a, b) => a.local_date.localeCompare(b.local_date));
+  // Read into one unit BEFORE averaging. A log that spans a change of
+  // preference holds both lb and kg rows, and a mean taken across the raw
+  // numbers would be an average of two different scales.
+  const read = sorted.map((w) => weightAs(Number(w.weight), w.unit, unit));
   return sorted.map((w, i) => {
-    const win = sorted.slice(Math.max(0, i - (n - 1)), i + 1);
-    const avg = win.reduce((s, x) => s + Number(x.weight), 0) / win.length;
-    return { date: w.local_date, raw: Number(w.weight), avg: round1(avg) };
+    const win = read.slice(Math.max(0, i - (n - 1)), i + 1);
+    const avg = win.reduce((s, x) => s + x, 0) / win.length;
+    return { date: w.local_date, raw: read[i], avg: round1(avg) };
   });
 }
 
+/** All four numbers are in the unit passed to `weightSummary` — never in the
+ *  units the rows happen to be stored in. */
 export interface WeightSummary {
   current: number | null;
   avg7: number | null;
@@ -228,21 +255,27 @@ export interface WeightSummary {
   weeklyChange: number | null;
 }
 
-export function weightSummary(weights: WeightEntry[], today: string): WeightSummary {
+export function weightSummary(
+  weights: WeightEntry[],
+  today: string,
+  unit: WeightUnit = "lb",
+): WeightSummary {
   const sorted = [...weights].sort((a, b) => a.local_date.localeCompare(b.local_date));
   if (!sorted.length) return { current: null, avg7: null, avg30: null, weeklyChange: null };
 
+  const read = (w: WeightEntry) => weightAs(Number(w.weight), w.unit, unit);
+
   const mean = (xs: WeightEntry[]) =>
-    xs.length ? round1(xs.reduce((s, x) => s + Number(x.weight), 0) / xs.length) : null;
+    xs.length ? round1(xs.reduce((s, x) => s + read(x), 0) / xs.length) : null;
 
   const within = (d: number) =>
     sorted.filter((w) => daysBetween(w.local_date, today) < d && daysBetween(w.local_date, today) >= 0);
 
   return {
-    current: Number(sorted[sorted.length - 1].weight),
+    current: read(sorted[sorted.length - 1]),
     avg7: mean(within(7)),
     avg30: mean(within(30)),
-    weeklyChange: weightDelta(sorted, today, 7),
+    weeklyChange: weightDelta(sorted, today, 7, unit),
   };
 }
 
@@ -262,13 +295,14 @@ export function correlation(
   weights: WeightEntry[],
   today: string,
   weeks = 4,
+  unit: WeightUnit = "lb",
 ): Correlation {
   const span = weeks * 7;
   const from = addDays(today, -(span - 1));
   const logged = logs
     .filter((l) => l.entry_count > 0 && daysBetween(from, l.local_date) >= 0)
     .sort((a, b) => a.local_date.localeCompare(b.local_date));
-  const wSeries = rollingWeight(weights, 7).filter((p) => daysBetween(from, p.date) >= 0);
+  const wSeries = rollingWeight(weights, 7, unit).filter((p) => daysBetween(from, p.date) >= 0);
 
   if (logged.length < 10 || wSeries.length < 10) {
     return {
@@ -287,6 +321,8 @@ export function correlation(
   const wDelta = round1(wLast - wFirst);
 
   const calMoved = Math.abs(calLast - calFirst) >= 75;
+  // Half a unit, read in the unit the sentence goes on to name — so the
+  // threshold and the phrase describing it can never disagree.
   const weightMoved = Math.abs(wDelta) >= 0.5;
 
   const intake = calMoved
@@ -294,8 +330,10 @@ export function correlation(
     : `Your average intake held around ${fmt(calLast)} kcal/day over ${weeks} weeks`;
 
   const weight = weightMoved
-    ? `while your 7-day average weight ${wDelta > 0 ? "rose" : "fell"} ${Math.abs(wDelta).toFixed(1)} lb`
-    : `while your 7-day average weight stayed within half a pound`;
+    ? `while your 7-day average weight ${wDelta > 0 ? "rose" : "fell"} ${Math.abs(wDelta).toFixed(1)} ${unit}`
+    : `while your 7-day average weight stayed within ${
+        unit === "kg" ? "half a kilogram" : "half a pound"
+      }`;
 
   const closer =
     calMoved && weightMoved && Math.sign(calLast - calFirst) === Math.sign(wDelta)
@@ -404,8 +442,33 @@ export function weightPolylines(
   return { raw: toPts((p) => p.raw), avg: toPts((p) => p.avg) };
 }
 
-export function weightChangeLabel(points: RollingPoint[], weeks = 4): string | null {
-  if (points.length < 2) return null;
-  const delta = round1(points[points.length - 1].avg - points[0].avg);
-  return `${signed(delta)} lb / ${weeks} wk`;
+/** The points falling inside the last `weeks` weeks ending on `today`. The
+ *  weight card is a fixed 4-week view (design §8), independent of the 7/30
+ *  segmented control above it. */
+export function weightWindow(
+  points: RollingPoint[],
+  today: string,
+  weeks = 4,
+): RollingPoint[] {
+  const from = addDays(today, -(weeks * 7 - 1));
+  return points.filter(
+    (p) => daysBetween(from, p.date) >= 0 && daysBetween(p.date, today) >= 0,
+  );
+}
+
+export function weightChangeLabel(
+  points: RollingPoint[],
+  today: string,
+  weeks = 4,
+  unit: WeightUnit = "lb",
+): string | null {
+  // Window here, not just in the caller: this function prints "/ 4 wk", so it
+  // is responsible for the claim being true. Handed the full 90-day series it
+  // used to report a 90-day delta under a 4-week label.
+  const inWindow = weightWindow(points, today, weeks);
+  if (inWindow.length < 2) return null;
+  // `points` already read in `unit` — rollingWeight converted them. This only
+  // names the unit it was handed; it must never convert a second time.
+  const delta = round1(inWindow[inWindow.length - 1].avg - inWindow[0].avg);
+  return `${signed(delta)} ${unit} / ${weeks} wk`;
 }

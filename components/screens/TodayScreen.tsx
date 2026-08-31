@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useApp } from "@/components/store";
 import { ConfidencePill, SectionTitle, Thumb } from "@/components/ui";
 import { TrialNotice } from "@/components/overlays";
-import { heroState, macroRows } from "@/lib/calc";
+import { heroState, macroRows, weightAs } from "@/lib/calc";
 import { compactLine, fmt, macroLine, timeLabel } from "@/lib/format";
 import { headerDate } from "@/lib/dates";
 
@@ -73,10 +73,20 @@ export default function TodayScreen() {
   const macros = macroRows(todayTotals, targets);
   const shownCal = useCountUp(todayTotals.cal);
 
-  const todayWeight =
-    weights.find((w) => w.local_date === today)?.weight ??
-    weights[weights.length - 1]?.weight ??
-    null;
+  // The row carries the unit it was logged under; the chip shows it in the
+  // unit the user reads in. Relabelling instead of converting would put "140"
+  // under a KG heading.
+  const unit = profile.weight_unit;
+  const todayRow = weights.find((w) => w.local_date === today) ?? null;
+  // Falling back to the last reading is right — an empty chip after one skipped
+  // morning is worse — but it must not then be captioned "today".
+  const weightRow = todayRow ?? weights[weights.length - 1] ?? null;
+  const rawWeight = weightRow
+    ? weightAs(Number(weightRow.weight), weightRow.unit, unit)
+    : null;
+  // weightAs does not guard finiteness, and a numeric() column can arrive as
+  // something unparseable; every sibling site renders "—" rather than NaN.
+  const todayWeight = Number.isFinite(rawWeight) ? (rawWeight as number) : null;
 
   return (
     <div className="px-5 pt-1.5 pb-[120px]">
@@ -97,10 +107,10 @@ export default function TodayScreen() {
           className="flex flex-none flex-col items-end gap-px rounded-[14px] border border-line-chip bg-[oklch(0.99_0.004_85)] px-3 py-2"
         >
           <span className="tnum font-mono text-[15px] font-bold text-ink">
-            {todayWeight === null ? "—" : Number(todayWeight).toFixed(1)}
+            {todayWeight === null ? "—" : todayWeight.toFixed(1)}
           </span>
           <span className="text-[10px] uppercase tracking-[0.08em] text-faint">
-            lb today
+            {todayWeight === null || todayRow ? `${unit} today` : `${unit} last`}
           </span>
         </button>
       </div>

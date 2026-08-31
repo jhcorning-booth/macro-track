@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "@/components/store";
 import { ScreenTitle } from "@/components/ui";
 import { IconChevronLeft, IconChevronRight, IconSearch } from "@/components/icons";
-import { fmt, lb, trim } from "@/lib/format";
+import { fmt, trim } from "@/lib/format";
+import { formatWeight, weightToKg } from "@/lib/units";
 import {
   daysBetween,
   daysInMonth,
@@ -106,7 +107,9 @@ export default function HistoryScreen() {
     : dayLog && dayLog.weight != null
       ? Number(dayLog.weight)
       : null;
-  const weightUnit = weightRow?.unit ?? dayLog?.weight_unit ?? profile.weight_unit;
+  // The unit the row was STORED in — used to interpret the number, never to
+  // label it. The label comes from the preference below.
+  const storedUnit = weightRow?.unit ?? dayLog?.weight_unit ?? profile.weight_unit;
 
   const [dayEntries, setDayEntries] = useState<FoodEntry[] | null>(null);
   const loadedFor = useRef<string | null>(null);
@@ -286,7 +289,9 @@ export default function HistoryScreen() {
               <span aria-hidden="true">·</span>
             )}
             {dayWeight !== null && (
-              <span className="tnum">{`${lb(dayWeight)} ${weightUnit}`}</span>
+              <span className="tnum">
+                {formatWeight(weightToKg(dayWeight, storedUnit), profile.weight_unit)}
+              </span>
             )}
           </div>
         )}

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useApp } from "@/components/store";
 import { ScreenTitle, SectionTitle, StepperRow, Toggle } from "@/components/ui";
+import { SetupCalculator } from "@/components/SetupCalculator";
 import { ensurePushSubscription, pushSupported } from "@/lib/push";
 import { fmt, trim } from "@/lib/format";
 
@@ -341,6 +342,7 @@ export default function SettingsScreen() {
   const [override, setOverride] = useState<PushState | null>(null);
   const push = override ?? detected;
   const [asking, setAsking] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
 
   const allow = useCallback(async () => {
     setAsking(true);
@@ -479,6 +481,40 @@ export default function SettingsScreen() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ------------------------------------------------- work it out */}
+
+      <SectionTitle className="mx-0.5 mt-[22px] mb-2.5">
+        Not sure what to aim for?
+      </SectionTitle>
+
+      {calcOpen ? (
+        <div className="flex flex-col gap-2.5">
+          <SetupCalculator onDone={() => setCalcOpen(false)} />
+          <button
+            type="button"
+            onClick={() => setCalcOpen(false)}
+            className="py-2 text-[13px] font-semibold text-faint"
+          >
+            Close
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setCalcOpen(true)}
+          className="w-full rounded-[18px] border border-dashed border-line-dashed px-4 py-3.5 text-left"
+        >
+          <span className="block text-[13.5px] font-bold text-accent">
+            Work out a target from your body
+          </span>
+          <span className={NOTE}>
+            Height, weight and where you want to get to, turned into a starting
+            point. You can edit it after, and you never have to use it — the
+            targets above are always yours to set directly.
+          </span>
+        </button>
       )}
 
       {/* ---------------------------------------------------------- plan */}

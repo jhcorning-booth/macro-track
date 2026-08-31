@@ -9,6 +9,7 @@ import {
   rollingWeight,
   targetLinePct,
   weightChangeLabel,
+  weightWindow,
   weightPolylines,
   windowStats,
 } from "@/lib/calc";
@@ -20,33 +21,40 @@ const WINDOWS: WindowDays[] = [7, 30];
 /** Trends (README §8). Every number here comes out of lib/calc — the screen
  *  only picks the window and lays the results out. */
 export default function TrendsScreen() {
-  const { dailyLogs, weights, today, targets } = useApp();
+  const { dailyLogs, weights, today, targets, profile } = useApp();
   const [days, setDays] = useState<WindowDays>(7);
 
   // PostgREST hands numeric() columns back as strings; coerce before math.
   const calTarget = Number(targets.calories_target);
   const proteinTarget = Number(targets.protein_target_g);
 
+  // Every weight figure below is read in this unit. Rows keep the unit they
+  // were logged under, so lib/calc converts rather than relabels.
+  const unit = profile.weight_unit;
+
   const stats = useMemo(
-    () => windowStats(dailyLogs, weights, today, days),
-    [dailyLogs, weights, today, days],
+    () => windowStats(dailyLogs, weights, today, days, unit),
+    [dailyLogs, weights, today, days, unit],
   );
   const bars = useMemo(
     () => calorieBars(dailyLogs, today, days, calTarget),
     [dailyLogs, today, days, calTarget],
   );
   const linePct = useMemo(() => targetLinePct(bars, calTarget), [bars, calTarget]);
-  const points = useMemo(() => rollingWeight(weights, 7), [weights]);
-  const lines = useMemo(() => weightPolylines(points), [points]);
+  const points = useMemo(() => rollingWeight(weights, 7, unit), [weights, unit]);
+  // The card is a 4-week view; plotting the full 90-day series under a
+  // "/ 4 wk" delta made the chart and its own label disagree.
+  const shown = useMemo(() => weightWindow(points, today, 4), [points, today]);
+  const lines = useMemo(() => weightPolylines(shown), [shown]);
   const corr = useMemo(
-    () => correlation(dailyLogs, weights, today),
-    [dailyLogs, weights, today],
+    () => correlation(dailyLogs, weights, today, 4, unit),
+    [dailyLogs, weights, today, unit],
   );
 
   const hasLoggedDays = stats.daysLogged > 0;
   const hasBars = bars.some((b) => b.calories > 0);
-  const hasWeightLine = points.length >= 2 && lines.avg.length > 0;
-  const changeLabel = hasWeightLine ? weightChangeLabel(points) : null;
+  const hasWeightLine = shown.length >= 2 && lines.avg.length > 0;
+  const changeLabel = hasWeightLine ? weightChangeLabel(points, today, 4, unit) : null;
   const adherence = Math.round(stats.adherencePct);
 
   const gap = days === 7 ? "gap-2" : "gap-[3px]";
@@ -99,7 +107,9 @@ export default function TrendsScreen() {
         <StatCard
           label="Weight change"
           value={
-            stats.weightChange === null ? "—" : `${signed(stats.weightChange)} lb`
+            stats.weightChange === null
+              ? "—"
+              : `${signed(stats.weightChange)} ${unit}`
           }
           sub={
             stats.weightChange === null

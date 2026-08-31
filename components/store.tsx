@@ -18,6 +18,7 @@ import type {
   FoodEntry,
   NudgeKind,
   NudgePref,
+  Profile,
   SavedFood,
   Targets,
   TrialStatus,
@@ -32,6 +33,7 @@ import {
   zonedToUtc,
 } from "@/lib/dates";
 import { sumEntries } from "@/lib/calc";
+import type { Recommendation } from "@/lib/recommend";
 import { clearPushSubscription } from "@/lib/push";
 import { attachPhotoUrls } from "@/lib/photos";
 
@@ -125,6 +127,12 @@ interface AppValue extends Omit<Bootstrap, "today" | "floor" | "trial"> {
   saveTargets: (t: Targets) => Promise<void>;
   /** Moves the date boundary itself, so it may change what "today" is. */
   setTimezone: (tz: string) => Promise<boolean>;
+  /** Patches the profile — unit preferences and the recommendation inputs.
+   *  Rejects anything the account is not allowed to write. */
+  saveProfile: (patch: Partial<Profile>) => Promise<boolean>;
+  /** Writes a recommendation in as the live target, from today forward. Never
+   *  called automatically: the user taps to accept it. */
+  applyRecommendation: (rec: Recommendation) => Promise<boolean>;
   toggleNudge: (kind: NudgeKind) => Promise<void>;
   setNudgeTime: (kind: NudgeKind, sendAt: string) => Promise<void>;
   searchFoods: (q: string) => Promise<FoodEntry[]>;
@@ -857,6 +865,48 @@ export function AppProvider({
     [profile.timezone, supabase, userId, syncDate, router],
   );
 
+  /** Body inputs and unit preferences. Both live on the profile, and both are
+   *  written the same way — read the row back so a zero-row PATCH cannot be
+   *  mistaken for a save. */
+  const saveProfile = useCallback(
+    async (patch: Partial<Profile>): Promise<boolean> => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .update(patch)
+        .eq("id", userId)
+        .select("*")
+        .maybeSingle();
+
+      if (error || !data) {
+        setLastError(error?.message ?? "Could not save that.");
+        return false;
+      }
+      setProfile(data as Profile);
+      return true;
+    },
+    [supabase, userId],
+  );
+
+  const applyRecommendation = useCallback(
+    async (rec: Recommendation): Promise<boolean> => {
+      await saveTargets({
+        calories_target: rec.calories,
+        protein_target_g: rec.protein_g,
+        carbs_target_g: rec.carbs_g,
+        fat_target_g: rec.fat_g,
+      });
+      // Remember what it was computed against so Settings can notice the
+      // weight has drifted and offer to redo it — rather than quietly moving
+      // the target under someone who never asked.
+      return saveProfile({
+        goal_label: rec.goalLabel,
+        plan_basis_weight_kg: rec.basisWeightKg,
+        plan_computed_at: new Date().toISOString(),
+      });
+    },
+    [saveTargets, saveProfile],
+  );
+
   /* ------------------------------------------------------------- nudges */
 
   const upsertNudge = useCallback(
@@ -984,6 +1034,8 @@ export function AppProvider({
     saveWeight,
     saveTargets,
     setTimezone,
+    saveProfile,
+    applyRecommendation,
     toggleNudge,
     setNudgeTime,
     searchFoods,

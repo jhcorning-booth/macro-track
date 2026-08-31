@@ -52,9 +52,17 @@ export async function loadBootstrap(): Promise<Bootstrap | null> {
     id: user.id,
     timezone: "America/Chicago",
     weight_unit: "lb",
+    height_unit: "ft_in",
     goal_label: "lean bulk",
     onboarded_at: null,
     created_at: new Date().toISOString(),
+    birth_year: null,
+    sex: null,
+    height_cm: null,
+    activity_level: null,
+    goal_weight_kg: null,
+    plan_basis_weight_kg: null,
+    plan_computed_at: null,
   };
 
   const today = localDate(profile.timezone);

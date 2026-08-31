@@ -23,9 +23,23 @@ export interface Profile {
   id: string;
   timezone: string;
   weight_unit: "lb" | "kg";
+  height_unit: "cm" | "ft_in";
   goal_label: string;
   onboarded_at: string | null;
   created_at: string;
+
+  /* Inputs to the calorie recommendation. Stored only so the setup can be
+     reopened and edited — they drive that estimate and nothing else. All
+     nullable: the app is fully usable without ever entering any of them. */
+  birth_year: number | null;
+  sex: "female" | "male" | "unspecified" | null;
+  height_cm: number | null;
+  activity_level: "sedentary" | "light" | "active" | "very_active" | null;
+  goal_weight_kg: number | null;
+  /** The weight the last recommendation was computed against, so Settings can
+   *  notice drift and offer to redo it — never change the target on its own. */
+  plan_basis_weight_kg: number | null;
+  plan_computed_at: string | null;
 }
 
 export interface Targets {

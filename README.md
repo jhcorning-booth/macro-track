@@ -7,6 +7,10 @@ app does every calculation, and the day's totals update in place.
 A day is a **win the moment calories reach the target**. Going over is still a
 win. Macros are shown as information, never as a verdict.
 
+Don't know what to aim for? Settings works it out from height, weight, age and
+a goal weight — an estimate with hard safety floors, never applied until you
+tap, and never required.
+
 Built from `../design_handoff_macrotrack_ai/` — the PRD and the high-fidelity
 design handoff. Today uses **variant A, the fill gauge**.
 
@@ -53,25 +57,63 @@ adds a database lookup for unlabelled foods. Open Food Facts needs no key.
 
 ### Signing in
 
-Email + one-time code. Enter your address, Supabase emails a code, type it in.
-The session persists and refreshes indefinitely, so this is a once-per-device
-step.
+Email + a one-time code. Enter your address, you get a six-digit code, type it
+in. The session persists and refreshes indefinitely, so this is a
+once-per-device step.
 
-> **Before you rely on it:** Supabase's built-in email service only delivers to
-> your own project-team addresses and is rate-limited to a couple of messages
-> an hour. That's fine for a single user signing in once per device. If you
-> ever get locked out, configure custom SMTP in
-> *Project Settings → Authentication → SMTP*.
+Auth email goes through **Gmail SMTP** (`MAIL_FROM` + `GMAIL_APP_PASSWORD`,
+read by `supabase config push`). That is not a preference — on the free tier
+with Supabase's built-in mailer, template overrides are rejected outright, so
+the email can only ever contain a magic *link* and never the code this screen
+asks for. Custom SMTP is what makes the code appear at all.
 
-**Signup is gated.** A deployed URL is a public URL, and an open signup would
-let a stranger create an account and spend your Anthropic key. A database
-trigger enforces an allowlist: while `public.allowed_emails` is empty, the
-**first** account to sign up claims the app and is added automatically;
-everyone after that is rejected. So sign in once yourself before sharing the
-URL anywhere. To add or change an address:
+### Who can sign up
+
+**Signup is open: anyone with the URL can create an account.** The allowlist
+trigger that used to gate it was deliberately dropped in
+`20260830050000_open_signup.sql`.
+
+What that does *not* affect is data isolation. RLS is keyed on `auth.uid()`
+across every table and the derived view, storage is scoped by a user-id path
+prefix, and a client cannot insert a row attributed to someone else — verified
+by signing in as a second user and finding nothing. What it does expose is
+cost, which is what the trial below is for.
+
+To close signup again, re-create the trigger (the table and function are still
+there):
 
 ```sql
-insert into public.allowed_emails (email) values (lower('you@example.com'));
+create trigger on_auth_user_signup
+  before insert on auth.users
+  for each row execute function public.enforce_signup_allowlist();
+```
+
+With `public.allowed_emails` empty, the next signup claims the app; with rows
+in it, only those addresses may sign up.
+
+### Trial limits
+
+Because signup is open, every account is metered: **14 days or 150 photo
+analyses**, whichever runs out first — roughly $3.75 of exposure per account.
+Quick-adds and history re-adds are free, since they make no model call.
+
+Enforcement is in the database, not the app. `consume_ai_credit()` takes a
+per-user advisory lock, checks and records in one `SECURITY DEFINER` call, and
+a refused call records nothing. `ai_usage` and `app_settings` carry no write
+privilege at all, and `profiles.plan` is not updatable by the account it
+describes — RLS gates rows, not columns, so that one needs a column privilege.
+
+Tune without a migration:
+
+```sql
+update public.app_settings set trial_days = 30, trial_analyses = 300;
+```
+
+Upgrade someone who gets in touch:
+
+```sql
+update public.profiles set plan = 'paid'
+ where id = (select id from auth.users where email = 'them@example.com');
 ```
 
 ### Seeing it with data
@@ -91,7 +133,7 @@ Development only — it uses the service key and bypasses RLS.
 |---|---|
 | `npm run dev` | Dev server |
 | `npm run build` | Production build |
-| `npm test` | 33 tests over the arithmetic in `lib/calc.ts` and `lib/dates.ts` |
+| `npm test` | 58 tests over `lib/calc.ts`, `lib/dates.ts`, `lib/recommend.ts` and `lib/units.ts` |
 | `npm run lint` | ESLint |
 | `npm run seed <email>` | Seed / wipe a demo account |
 | `npm run setup:cron` | Re-store `CRON_SECRET` in Supabase Vault after rotating it |
@@ -108,9 +150,13 @@ components/
   ui.tsx           Thumb · ConfidencePill · StatCard · StepperRow · Toggle
   icons.tsx        the icon set
   screens/         Today · Add · History · Trends · Settings · Weight+Onboarding
+  SetupCalculator.tsx  the body-inputs → calorie recommendation form
 lib/
   calc.ts          every derived number lives here (tested)
   dates.ts         local-date + timezone handling (tested)
+  recommend.ts     Mifflin-St Jeor → activity → paced gap, with the floors (tested)
+  units.ts         kg/lb and cm/ft-in; storage is metric, display converts (tested)
+  photos.ts        re-attaches signed photo URLs after a client-side reload
   analyze.ts       the model call and its schema
   data.ts          server-side bootstrap fetch
   nutrition-sources.ts   Open Food Facts / USDA lookups
@@ -179,6 +225,10 @@ The web app needs only four variables, and exactly one of them is a secret:
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | public; RLS is what protects the data |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | public by design |
 | `ANTHROPIC_API_KEY` | **secret** — server-side only |
+
+Auth email (`MAIL_FROM`, `GMAIL_APP_PASSWORD`) is read by `supabase config
+push`, not by the web app — it configures Supabase's SMTP, so it never needs to
+reach the host either.
 
 Deliberately *not* on the web host: the Supabase **service-role key**, the
 **VAPID private key**, and `CRON_SECRET`. Nothing in the app needs to bypass

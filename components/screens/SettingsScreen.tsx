@@ -11,6 +11,7 @@ import {
 import { useApp } from "@/components/store";
 import { ScreenTitle, SectionTitle, StepperRow, Toggle } from "@/components/ui";
 import { SetupCalculator } from "@/components/SetupCalculator";
+import { IconChevronRight } from "@/components/icons";
 import { ensurePushSubscription, pushSupported } from "@/lib/push";
 import { fmt, trim } from "@/lib/format";
 
@@ -357,12 +358,58 @@ export default function SettingsScreen() {
     (r) => nudges.find((n) => n.kind === r.kind)?.enabled ?? NUDGE_DEFAULT_ON,
   );
 
+  /* The calculator leads the page until it has been used — for a new account
+     it IS the primary action here — then steps aside, because a returning user
+     mostly wants to nudge calories rather than redo the whole thing. */
+  const hasPlan = profile.plan_computed_at !== null;
+
+  const workItOut = (
+    <>
+      <SectionTitle className="mx-0.5 mt-[22px] mb-2.5">
+        {hasPlan ? "Your worked-out targets" : "Not sure what to aim for?"}
+      </SectionTitle>
+
+      {calcOpen ? (
+        <div className="flex flex-col gap-2.5">
+          <SetupCalculator onDone={() => setCalcOpen(false)} />
+          <button
+            type="button"
+            onClick={() => setCalcOpen(false)}
+            className="py-2 text-[13px] font-semibold text-faint"
+          >
+            Close
+          </button>
+        </div>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() => setCalcOpen(true)}
+            className="flex w-full items-center justify-between gap-3 rounded-[18px] bg-accent px-4 py-[15px] text-left text-surface transition-colors active:bg-accent-hover"
+          >
+            <span className="text-[15px] font-bold">
+              {hasPlan ? "Changed your mind? Redo your targets" : "Work out my targets"}
+            </span>
+            <IconChevronRight size={18} />
+          </button>
+          <p className={NOTE}>
+            {hasPlan
+              ? "Opens with your answers still filled in — change one and apply again. The targets above stay yours to set directly."
+              : "Height, weight and where you want to get to, turned into a starting point. You can edit it after, and you never have to use it."}
+          </p>
+        </>
+      )}
+    </>
+  );
+
   return (
     <div className="px-5 pt-2 pb-[120px]">
       <ScreenTitle
         title="Settings"
         sub="Changes apply to today and forward. Past days keep their old targets."
       />
+
+      {!hasPlan && workItOut}
 
       {/* ------------------------------------------------------- targets */}
 
@@ -407,6 +454,8 @@ export default function SettingsScreen() {
           onChange={(n) => bump({ fat_target_g: n })}
         />
       </div>
+
+      {hasPlan && workItOut}
 
       {/* -------------------------------------------------------- nudges */}
 
@@ -481,40 +530,6 @@ export default function SettingsScreen() {
             </div>
           )}
         </div>
-      )}
-
-      {/* ------------------------------------------------- work it out */}
-
-      <SectionTitle className="mx-0.5 mt-[22px] mb-2.5">
-        Not sure what to aim for?
-      </SectionTitle>
-
-      {calcOpen ? (
-        <div className="flex flex-col gap-2.5">
-          <SetupCalculator onDone={() => setCalcOpen(false)} />
-          <button
-            type="button"
-            onClick={() => setCalcOpen(false)}
-            className="py-2 text-[13px] font-semibold text-faint"
-          >
-            Close
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setCalcOpen(true)}
-          className="w-full rounded-[18px] border border-dashed border-line-dashed px-4 py-3.5 text-left"
-        >
-          <span className="block text-[13.5px] font-bold text-accent">
-            Work out a target from your body
-          </span>
-          <span className={NOTE}>
-            Height, weight and where you want to get to, turned into a starting
-            point. You can edit it after, and you never have to use it — the
-            targets above are always yours to set directly.
-          </span>
-        </button>
       )}
 
       {/* ---------------------------------------------------------- plan */}

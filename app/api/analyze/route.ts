@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
         const { data: rows, error: insertError } = await supabase
           .from("food_entries")
           .insert(
-            items.map((item) => ({
+            items.map((item, i) => ({
               user_id: user.id,
               local_date: localDate,
               consumed_at: new Date().toISOString(),
@@ -197,6 +197,13 @@ export async function POST(req: NextRequest) {
               source_label: item.source_label,
               reasoning: item.reasoning,
               saved_food_id: item.matchedSavedFoodId ?? null,
+              // What the user actually said about this capture. It already
+              // steers the model (lib/analyze.ts treats it as evidence that
+              // overrides portion assumptions), but it was never written to
+              // the row — so the reasoning survived and its source did not.
+              // Only the first entry carries it: one note describes the
+              // capture, not each item a multi-item photo produced.
+              notes: i === 0 ? noteText || null : null,
             })),
           )
           .select("*");

@@ -38,6 +38,14 @@ export const viewport: Viewport = {
   userScalable: false,
   viewportFit: "cover",
   themeColor: "#faf7f3",
+  // The shell is `fixed inset-0` with `overflow-hidden` (components/App.tsx),
+  // so nothing scrolls. Under the default `resizes-visual` the layout viewport
+  // keeps its full height when the soft keyboard opens, and the keyboard simply
+  // covers the bottom of the app — on the camera screen that is the shutter
+  // itself, with no way to scroll it back or dismiss the keyboard. Resizing the
+  // *content* viewport instead lets the flex column shrink so the controls stay
+  // on screen while typing.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

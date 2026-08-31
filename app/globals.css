@@ -107,6 +107,31 @@
     opacity: 1;
   }
 }
+/* The held-frame window quietly running out. Deliberately a ring that widens
+   and fades rather than a shrinking arc or a number: it reads as "this is
+   about to send" without turning into a stopwatch the user feels raced by. */
+@keyframes grace {
+  from {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+/* Someone who has asked for less motion still needs to know the window is
+   finite; they get a static ring instead of a moving one. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes grace {
+    from {
+      opacity: 0.5;
+    }
+    to {
+      opacity: 0.5;
+    }
+  }
+}
 
 /* ------------------------------------------------------------------- base
    These MUST stay inside @layer base. Unlayered CSS outranks every layered

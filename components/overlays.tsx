@@ -345,7 +345,10 @@ export function TrialWall() {
   if (!wall) return null;
 
   const expired = wall.reason === "expired";
-  const email = wall.contact_email;
+  // Empty is a real state — a deployment that never set a contact address. The
+  // wall still has to explain itself, so the mailto degrades to plain text
+  // rather than becoming a link to "mailto:".
+  const email = wall.contact_email?.trim() || null;
 
   return (
     <div
@@ -371,13 +374,17 @@ export function TrialWall() {
           : `The free trial covers ${wall.analyses_limit ?? 150} photo analyses and you've used them all. Everything you logged is still here.`}
       </p>
 
-      <a
-        href={`mailto:${email}?subject=${encodeURIComponent("MacroTrack — upgrade to a paid account")}`}
-        className="mt-1 rounded-[18px] bg-accent px-6 py-3.5 text-[14px] font-bold text-surface"
-      >
-        Email to keep going
-      </a>
-      <p className="font-mono text-[11px] text-faint">{email}</p>
+      {email && (
+        <>
+          <a
+            href={`mailto:${email}?subject=${encodeURIComponent("MacroTrack — upgrade to a paid account")}`}
+            className="mt-1 rounded-[18px] bg-accent px-6 py-3.5 text-[14px] font-bold text-surface"
+          >
+            Email to keep going
+          </a>
+          <p className="font-mono text-[11px] text-faint">{email}</p>
+        </>
+      )}
 
       <div className="mt-3 max-w-[32ch] rounded-[18px] border border-line bg-raised px-4 py-3 text-[12.5px] leading-[1.5] text-muted text-balance">
         Photo logging is what pauses. Your history, weight, trends and one-tap

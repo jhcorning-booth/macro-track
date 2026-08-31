@@ -116,13 +116,18 @@ export async function loadBootstrap(): Promise<Bootstrap | null> {
     nudges: (nudgesRes.data ?? []) as NudgePref[],
     // A failed lookup must not hand out free analyses; assume blocked and let
     // the wall explain, rather than silently uncapping the key.
+    //
+    // The address comes from the environment, never from source: this repo is
+    // public, and a hardcoded address is a hardcoded address for every fork and
+    // every scraper. Unset is a valid state — the wall drops the contact line
+    // rather than showing someone else's inbox.
     trial: (trialRes.data as TrialStatus | null) ?? {
       plan: "trial",
       unlimited: false,
       blocked: true,
       reason: "expired",
       analyses_used: 0,
-      contact_email: "jhcorning12@gmail.com",
+      contact_email: process.env.CONTACT_EMAIL ?? "",
     },
   };
 }

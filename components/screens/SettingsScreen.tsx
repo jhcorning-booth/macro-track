@@ -235,6 +235,10 @@ export default function SettingsScreen() {
     trial,
   } = useApp();
 
+  // Unset is a real state: the address is per-deployment configuration, not
+  // something committed to source. Blank means "no contact line", not "".
+  const contactEmail = trial.contact_email?.trim() || null;
+
   /* ---- targets: instant on screen, one write ~500 ms after the last tap */
 
   const [local, setLocal] = useState<Targets>(() => normalizeTargets(targets));
@@ -560,15 +564,19 @@ export default function SettingsScreen() {
               {trial.blocked ? "Trial ended" : "After the trial"}
             </div>
             <div className={NOTE}>
-              Photo logging pauses; everything else keeps working. Email{" "}
-              {trial.contact_email} to switch to a paid account.
+              Photo logging pauses; everything else keeps working.
+              {contactEmail
+                ? ` Email ${contactEmail} to switch to a paid account.`
+                : " Contact whoever runs this deployment to switch to a paid account."}
             </div>
-            <a
-              href={`mailto:${trial.contact_email}?subject=${encodeURIComponent("MacroTrack — upgrade to a paid account")}`}
-              className="mt-2.5 inline-block text-[13.5px] font-bold text-accent"
-            >
-              Email {trial.contact_email}
-            </a>
+            {contactEmail && (
+              <a
+                href={`mailto:${contactEmail}?subject=${encodeURIComponent("MacroTrack — upgrade to a paid account")}`}
+                className="mt-2.5 inline-block text-[13.5px] font-bold text-accent"
+              >
+                Email {contactEmail}
+              </a>
+            )}
           </div>
         </div>
       )}

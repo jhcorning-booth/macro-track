@@ -10,7 +10,7 @@ create table if not exists public.app_settings (
   id                 boolean primary key default true check (id),
   trial_days         integer not null default 14  check (trial_days > 0),
   trial_analyses     integer not null default 150 check (trial_analyses > 0),
-  contact_email      text    not null default 'jhcorning12@gmail.com',
+  contact_email      text    not null default '',
   updated_at         timestamptz not null default now()
 );
 

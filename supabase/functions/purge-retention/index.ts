@@ -15,6 +15,18 @@ const supabase = createClient(
 
 Deno.serve(async (req) => {
   if (req.headers.get("x-cron-secret") !== Deno.env.get("CRON_SECRET")) {
+
+  // 4. Operational events older than 30 days. ops_events is bucketed by
+  //    (day, source, code) so it grows by distinct codes rather than by
+  //    traffic, but it is still the one table here nothing else ever prunes.
+  //    The rate-guard rows are pure scaffolding and go after a day.
+  const opsFloor = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  await supabase.from("ops_events").delete().lt("event_day", opsFloor);
+  await supabase
+    .from("ops_event_rate")
+    .delete()
+    .lt("hour_bucket", new Date(Date.now() - 86_400_000).toISOString());
+
     return new Response("Forbidden", { status: 403 });
   }
 

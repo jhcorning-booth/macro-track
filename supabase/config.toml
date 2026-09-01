@@ -61,3 +61,6 @@ verify_jwt = false
 
 [functions.purge-retention]
 verify_jwt = false
+
+[functions.daily-report]
+verify_jwt = false

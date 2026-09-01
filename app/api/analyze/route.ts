@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { attachPhotos } from "@/lib/data";
+import { opsRecorder } from "@/lib/ops";
 import { analyzeFood } from "@/lib/analyze";
 import { lookupBarcode, lookupUsda, type SourceHit } from "@/lib/nutrition-sources";
 import { round1 } from "@/lib/calc";
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(evt)}\n\n`));
 
       let evidenceIds: string[] = [];
+      const ops = opsRecorder(supabase, "api_analyze");
 
       try {
         // Authorise BEFORE uploading anything: a blocked account gets a wall,
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
         );
 
         if (creditError) {
+          ops.record("credit_rpc_failed");
           throw new Error(creditError.message);
         }
         const status = credit as unknown as TrialStatus & { allowed: boolean };
@@ -112,6 +115,9 @@ export async function POST(req: NextRequest) {
               const { error } = await supabase.storage
                 .from(BUCKET)
                 .upload(path, bytes, { contentType: file.type || "image/jpeg" });
+              // Was silent: the analysis carried on with path null, so the
+              // photo was gone and Try again had nothing to re-read.
+              if (error) ops.record("photo_upload_failed");
               return {
                 base64: bytes.toString("base64"),
                 mime: file.type || "image/jpeg",
@@ -136,10 +142,13 @@ export async function POST(req: NextRequest) {
                 },
               ];
 
-          const { data: inserted } = await supabase
+          const { data: inserted, error: evidenceError } = await supabase
             .from("food_evidence")
             .insert(evidenceRows)
             .select("id");
+          // Also silent: with no evidence row there is no retry, so a failure
+          // here quietly costs the user the capture.
+          if (evidenceError || !inserted?.length) ops.record("evidence_insert_failed");
           evidenceIds = (inserted ?? []).map((r) => r.id as string);
         }
 
@@ -148,6 +157,7 @@ export async function POST(req: NextRequest) {
         if (evidenceIds.length) send({ type: "evidence", evidenceIds });
 
         if (!images.length && !noteText && !transcriptText) {
+          ops.record("nothing_to_analyze", "warn");
           throw new Error("Nothing to analyze — add a photo or a note.");
         }
 
@@ -209,6 +219,7 @@ export async function POST(req: NextRequest) {
           .select("*");
 
         if (insertError || !rows?.length) {
+          ops.record("entry_insert_failed");
           throw new Error(insertError?.message ?? "Could not save the entry.");
         }
 
@@ -237,6 +248,9 @@ export async function POST(req: NextRequest) {
         const withPhotos = await attachPhotos(supabase, entries);
         send({ type: "logged", entries: withPhotos, celebrate: false });
       } catch (err) {
+        // Anything that reached here and was not already named above is the
+        // analysis itself failing — model, parse, or network.
+        if (!ops.named()) ops.record("model_failed");
         send({
           type: "error",
           message:
@@ -244,6 +258,10 @@ export async function POST(req: NextRequest) {
           evidenceIds,
         });
       } finally {
+        // Awaited, not fired and forgotten. The events recorded latest are the
+        // post-persistence ones, and a floating promise started here would not
+        // reliably survive controller.close() on a serverless host.
+        await ops.flush();
         controller.close();
       }
     },
